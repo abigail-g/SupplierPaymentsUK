@@ -1,0 +1,505 @@
+---
+title: "DPO_analysis"
+output: html_document
+date: "2024-08-18"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(plm)
+library(car)
+library(emmeans)
+```
+
+#Read the required files
+
+```{r}
+
+#UK interest rates 2017 - 2024
+uk_bank_rate = read_csv('uk_bank_rate.csv')
+
+#UK company payment time
+payment_times = read_csv('payment-practices.csv')
+
+#UK GDP 2017 - 2024
+uk_gdp = read_csv('uk_gdp.csv')
+
+#UK unemployment rate 2017 - 2024
+uk_unemp_rate = read_csv('uk_unemp_rate.csv')
+
+#UK inflation rate 2-17 - 2024
+uk_inflation = read_csv('uk_inflation_rate.csv')
+
+#UK business confidence index 2017 - 2024
+uk_BCI = read_csv('uk_BCI.csv')
+
+#UK interest rates 2017-2024
+uk_interest_rate = read_csv('uk_interest_rate.csv')
+
+#UK company financials data
+company_fdata = read_csv('company_FAME.csv') 
+
+```
+
+
+#Convert company_fdata table from wide to long
+
+```{r}
+
+#Extracting each wide variable set to separate temp dataframe
+
+company_assets <- company_fdata %>% 
+  select(`Company name`,`total_assets 2024`,`total_assets 2023`,`total_assets 2022`,`total_assets 2021`,`total_assets 2020`,`total_assets 2019`,`total_assets 2018`,`total_assets 2017`) %>%
+  rename('company_name' = `Company name`,
+         '2024' = `total_assets 2024`,
+         '2023' = `total_assets 2023`,
+         '2022' = `total_assets 2022`,
+         '2021' = `total_assets 2021`,
+         '2020' = `total_assets 2020`,
+         '2019' = `total_assets 2019`,
+         '2018' = `total_assets 2018`,
+         '2017' = `total_assets 2017`) %>%
+  gather( year, total_assets, '2024':'2017') %>%
+  subset(year != '2024') 
+
+company_assets <- company_assets %>% distinct(company_name, year, .keep_all = TRUE)
+  
+company_equity <- company_fdata %>% 
+  select(`Company name`,`equity2024`,`equity2023`,`equity2022`,`equity2021`,`equity2020`,`equity2019`,`equity2018`,`equity2017`) %>%
+  rename('company_name' = `Company name`,
+         '2024' = `equity2024`,
+         '2023' = `equity2023`,
+         '2022' = `equity2022`,
+         '2021' = `equity2021`,
+         '2020' = `equity2020`,
+         '2019' = `equity2019`,
+         '2018' = `equity2018`,
+         '2017' = `equity2017`) %>%
+  gather( year, equity, '2024':'2017') %>%
+  subset(year != '2024' ) 
+
+company_equity <- company_equity %>% distinct(company_name, year, .keep_all = TRUE)
+  
+company_liability <- company_fdata %>% 
+  select(`Company name`,`liabilities2024`,`liabilities2023`,`liabilities2022`,`liabilities2021`,`liabilities2020`,`liabilities2019`,`liabilities2018`,`liabilities2017`) %>%
+  rename('company_name' = `Company name`,
+         '2024' = `liabilities2024`,
+         '2023' = `liabilities2023`,
+         '2022' = `liabilities2022`,
+         '2021' = `liabilities2021`,
+         '2020' = `liabilities2020`,
+         '2019' = `liabilities2019`,
+         '2018' = `liabilities2018`,
+         '2017' = `liabilities2017`) %>%
+  gather( year, liabilities, '2024':'2017') %>%
+  subset(year != '2024' )
+
+company_liability <- company_liability %>% distinct(company_name, year, .keep_all = TRUE)
+  
+company_ROTA <- company_fdata %>% 
+  select(`Company name`,`ROTA 2024`,`ROTA 2023`,`ROTA 2022`,`ROTA 2021`,`ROTA 2020`,`ROTA 2019`,`ROTA 2018`,`ROTA 2017`) %>%
+  rename('company_name' = `Company name`,
+         '2024' = `ROTA 2024`,
+         '2023' = `ROTA 2023`,
+         '2022' = `ROTA 2022`,
+         '2021' = `ROTA 2021`,
+         '2020' = `ROTA 2020`,
+         '2019' = `ROTA 2019`,
+         '2018' = `ROTA 2018`,
+         '2017' = `ROTA 2017`) %>%
+  gather( year, ROTA, '2024':'2017') %>%
+  subset(year != '2024' )
+
+company_ROTA <- company_ROTA %>% distinct(company_name, year, .keep_all = TRUE)
+  
+company_liquidity_ratio <- company_fdata %>% 
+  select(`Company name`,`liquidity_ratio 2024`,`liquidity_ratio 2023`,`liquidity_ratio 2022`,`liquidity_ratio 2021`,`liquidity_ratio 2020`,`liquidity_ratio 2019`,`liquidity_ratio 2018`,`liquidity_ratio 2017`) %>%
+  rename('company_name' = `Company name`,
+         '2024' = `liquidity_ratio 2024`,
+         '2023' = `liquidity_ratio 2023`,
+         '2022' = `liquidity_ratio 2022`,
+         '2021' = `liquidity_ratio 2021`,
+         '2020' = `liquidity_ratio 2020`,
+         '2019' = `liquidity_ratio 2019`,
+         '2018' = `liquidity_ratio 2018`,
+         '2017' = `liquidity_ratio 2017`) %>%
+  gather( year, liquidity_ratio, '2024':'2017') %>%
+  subset(year != '2024' )
+
+company_liquidity_ratio <- company_liquidity_ratio %>% distinct(company_name, year, .keep_all = TRUE)
+  
+company_work_cap <- company_fdata %>% 
+  select(`Company name`,`working_capital 2024`,`working_capital 2023`,`working_capital 2022`,`working_capital 2021`,`working_capital 2020`,`working_capital 2019`,`working_capital 2018`,`working_capital 2017`) %>%
+  rename('company_name' = `Company name`,
+         '2024' = `working_capital 2024`,
+         '2023' = `working_capital 2023`,
+         '2022' = `working_capital 2022`,
+         '2021' = `working_capital 2021`,
+         '2020' = `working_capital 2020`,
+         '2019' = `working_capital 2019`,
+         '2018' = `working_capital 2018`,
+         '2017' = `working_capital 2017`) %>%
+  gather( year, working_capital, '2024':'2017') %>%
+  subset(year != '2024' )
+
+company_work_cap <- company_work_cap %>% distinct(company_name, year, .keep_all = TRUE)
+
+  
+company_credit_pay <- company_fdata %>% 
+  select(`Company name`,`creditors_payment 2024`,`creditors_payment 2023`,`creditors_payment 2022`,`creditors_payment 2021`,`creditors_payment 2020`,`creditors_payment 2019`,`creditors_payment 2018`,`creditors_payment 2017`) %>%
+  rename('company_name' = `Company name`,
+         '2024' = `creditors_payment 2024`,
+         '2023' = `creditors_payment 2023`,
+         '2022' = `creditors_payment 2022`,
+         '2021' = `creditors_payment 2021`,
+         '2020' = `creditors_payment 2020`,
+         '2019' = `creditors_payment 2019`,
+         '2018' = `creditors_payment 2018`,
+         '2017' = `creditors_payment 2017`) %>%
+  gather( year, creditors_payment, '2024':'2017') %>%
+  subset(year != '2024' )
+
+company_credit_pay <- company_credit_pay %>% distinct(company_name, year, .keep_all = TRUE)
+
+
+company_fdata <- select(company_fdata, `Company name`, `BvD sector`) %>%
+  rename(company_name = `Company name`,
+         sector = `BvD sector`)
+
+company_fdata <- company_fdata %>% distinct(company_name, .keep_all = TRUE)
+
+# Combining all company data and ensure the 'date' column is in Date format (first day of the year) 
+company_data <- company_assets %>% 
+  left_join( company_equity, by=c('company_name', 'year')) %>%
+  left_join( company_liability, by=c('company_name', 'year')) %>%
+  left_join( company_ROTA, by=c('company_name', 'year')) %>%
+  left_join( company_work_cap, by=c('company_name', 'year')) %>%
+  left_join( company_credit_pay, by=c('company_name', 'year')) %>%
+  left_join( company_liquidity_ratio, by=c('company_name', 'year')) %>%
+  left_join( company_fdata, by=c('company_name')) %>%
+  mutate(date = ymd(paste0(year, "-01-01"))) %>%
+  select(-year) 
+
+# Function to generate monthly dates for a given year
+generate_monthly_dates <- function(year_date) {
+  seq(from = year_date, 
+      to = year_date + years(1) - months(1), 
+      by = "month")
+}
+
+# Apply the function to each row and duplicate records
+company_data <- company_data %>%
+  rowwise() %>%
+  mutate(month_sequence = list(generate_monthly_dates(date))) %>%
+  unnest(month_sequence) %>%
+  mutate(date = format(month_sequence, "%m/%Y")) %>%
+  select(-month_sequence) %>% 
+  mutate(date = my(date))
+
+
+#Removing temp data frames
+remove(company_assets)
+remove(company_credit_pay)
+remove(company_equity)
+remove(company_liability)
+remove(company_liquidity_ratio)
+remove(company_ROTA)
+remove(company_work_cap)
+
+```
+
+#Check for NA values
+
+```{r}
+# Check the structure of the data
+#str(bank_rate)
+#str(payment_times)
+
+#remove and check for NA values
+payment_times = na.omit(payment_times)
+sum(is.na(payment_times))
+
+uk_bank_rate = na.omit(uk_bank_rate)
+sum(is.na(uk_bank_rate))
+
+uk_gdp = na.omit(uk_gdp)
+sum(is.na(uk_gdp))
+
+uk_unemp_rate = na.omit(uk_unemp_rate)
+sum(is.na(uk_unemp_rate))
+
+uk_inflation = na.omit(uk_inflation)
+sum(is.na(uk_inflation))
+
+uk_BCI = na.omit(uk_BCI)
+sum(is.na(uk_BCI))
+
+uk_interest_rate = na.omit((uk_interest_rate))
+sum(is.na(uk_interest_rate))
+
+```
+
+
+#Formatting uk company payment times
+```{r}
+# Ensure date columns are in Date format yyyy-mm-dd
+payment_times <- payment_times %>%
+  mutate(
+    Start_date = dmy(Start_date),
+    End_date = dmy(End_date)
+  )
+
+uk_interest_rate <- uk_interest_rate %>%
+  mutate(Date = dmy(Date),
+         Date = format(Date, "%m/%Y"))
+
+uk_gdp <- uk_gdp %>%
+  mutate(year = yq(year)) %>%
+  rename(date = year)
+
+
+uk_unemp_rate <- uk_unemp_rate %>%
+  mutate(month = dplyr::recode(month,
+  JAN = 1,
+  FEB = 2,
+  MAR = 3,
+  APR = 4,
+  MAY = 5,
+  JUN = 6,
+  JUL = 7,
+  AUG = 8,
+  SEP = 9,
+  OCT = 10,
+  NOV = 11,
+  DEC = 12)) %>%
+  unite(col="updated_year", c(year,month)) %>%
+  mutate(updated_year = ym(updated_year)) %>%
+  rename(date = updated_year) %>%
+  mutate(date = format(date, "%m/%Y"))
+
+uk_inflation <- uk_inflation %>%
+   mutate(month = dplyr::recode(month,
+  JAN = 1,
+  FEB = 2,
+  MAR = 3,
+  APR = 4,
+  MAY = 5,
+  JUN = 6,
+  JUL = 7,
+  AUG = 8,
+  SEP = 9,
+  OCT = 10,
+  NOV = 11,
+  DEC = 12)) %>%
+  unite(col="updated_year", c(year,month)) %>%
+  mutate(updated_year = ym(updated_year)) %>%
+  rename(date = updated_year) %>%
+  mutate(date = format(date, "%m/%Y"))
+
+uk_BCI <- uk_BCI %>%
+  unite(col = "updated_year", c(year,quarter)) %>%
+  mutate(updated_year = yq(updated_year)) %>%
+  rename(date = updated_year)
+
+uk_bank_rate <- uk_bank_rate %>%
+  mutate(
+    Date = dmy(Date),
+    month_year = format(Date, "%m/%Y")) %>%
+  rename(bank_rate = `Bank Rate`)
+
+```
+
+
+#Standardizing all data to be monthly
+
+```{r}
+# When there is a start and end date
+# Function to generate sequence of months between start and end dates
+generate_month_sequence_1 <- function(Start_date, End_date) {
+  seq(from = floor_date(Start_date, "month"), 
+      to = floor_date(End_date, "month"), 
+      by = "month")
+}
+
+# Apply the function to each row and duplicate records
+payment_times <- payment_times %>%
+  rowwise() %>%
+  mutate(month_sequence = list(generate_month_sequence_1(Start_date, End_date))) %>%
+  unnest(month_sequence) %>%
+  mutate(date = format(month_sequence, "%m/%Y")) %>%
+  select(-month_sequence, -Report_Id, - Start_date, - End_date)
+
+
+uk_bank_rate <- uk_bank_rate %>%
+  group_by(month_year) %>%
+  summarise(bank_rate = mean(bank_rate)) %>%
+  rename(date = month_year)
+
+
+# When there is quarterly date
+# Function to convert quarterly dates for the year
+generate_month_sequence_3 <- function(year_quarter) {
+  seq(from = year_quarter, by = "month", length.out = 3)
+}
+
+# Apply the function to each row and duplicate records
+uk_BCI <- uk_BCI %>%
+  rowwise() %>%
+  mutate(month_sequence = list(generate_month_sequence_3(date))) %>%
+  unnest(month_sequence) %>%
+  mutate(date = format(month_sequence, "%m/%Y")) %>%
+  select(-month_sequence)
+
+uk_gdp <- uk_gdp %>%
+  rowwise() %>%
+  mutate(month_sequence = list(generate_month_sequence_3(date))) %>%
+  unnest(month_sequence) %>%
+  mutate(date = format(month_sequence, "%m/%Y")) %>%
+  select(-month_sequence)
+
+```
+
+#creating the master data set 
+
+```{r}
+master_data <- payment_times %>% 
+  left_join( uk_bank_rate, by=c('date' = 'date')) %>%
+  left_join( uk_BCI, by=c('date' = 'date')) %>%
+  left_join( uk_gdp, by=c('date' = 'date')) %>%
+  left_join( uk_inflation, by=c('date' = 'date')) %>%
+  left_join( uk_unemp_rate, by=c('date' = 'date')) %>%
+  left_join(uk_interest_rate, by=c('date' = 'Date')) %>%
+  mutate(date = my(date))
+
+master_data <- master_data %>%
+  left_join(company_data, by=c('Company' = 'company_name', 'date' = 'date'))
+
+
+write.csv(master_data, file = "master_data.csv")
+
+master_data_new <- rename(master_data_new, 'interest_rate' = `interest rate`)
+
+master_data <- master_data %>%
+  mutate('debt_to_equity' = liabilities/equity) %>%
+  select(-liabilities, - equity)
+
+master_data_new <-na.omit(master_data)
+
+master_data_new$sector <- as.factor(master_data_new$sector)
+master_data_new$Company <- as.factor(master_data_new$Company)
+str(master_data_new)
+
+```
+
+
+#visualise the data
+
+```{r}
+#Average time to pay by sector
+master_data_new_1 <- 
+
+
+master_data_new %>%
+  group_by(sector, date) %>%
+  summarise(avg_time_to_pay = mean(Average_time_to_pay)) %>%
+  ggplot(aes(x=date, y=avg_time_to_pay, col=sector)) + geom_line(alpha=0.5) + scale_y_continuous(breaks=1:10) + labs(x="Time / Month", y="avg time to pay", col="sector") + geom_vline(xintercept=2.5, lty=3)
+```
+
+```{r}
+master_data_new <- filter(master_data_new, master_data_new$Average_time_to_pay<2000)
+
+ggplot(master_data_new, aes(x=interest_rate, y=bank_rate)) + geom_point() + labs(x="Credit Spread", y="Bank rate") + geom_vline(xintercept=2.5, lty=3)
+
+```
+
+
+
+#checking for multicolinearity
+
+```{r}
+cor_matrix <- cor(master_data_new[, c("bank_rate", "BCI", "GDP", "inflation_rate", 
+                                      "unemployment_rate", "interest_rate", 
+                                      "total_assets", "ROTA", "debt_to_equity")])
+
+cor_matrix[upper.tri(cor_matrix)] <- NA
+cor_matrix[cor_matrix <= 0.5] <- NA
+
+print(round(cor_matrix, 2))
+
+```
+
+#grouping data by sector
+```{r}
+compcount_by_sector <- master_data_new_1 %>%
+  group_by(sector) %>%
+  summarise(no_of_comp = n_distinct(Company) )
+
+print(compcount_by_sector)
+
+
+#filter companies from agriculture sector
+master_data_agri <- master_data_new_1 %>%
+  filter(sector == "Agriculture, Horticulture & Livestock")
+
+# Fit a Fixed Effects Model
+fe_model_agri <- plm(Average_time_to_pay ~ BCI+GDP+inflation_rate+unemployment_rate+interest_rate+total_assets+ROTA+debt_to_equity, 
+                           data = master_data_agri, 
+                           index = c("Company","date"), 
+                           model = "within")
+
+
+
+#filter companies from construction sector
+master_data_construct <- master_data_new_1 %>%
+  filter(sector == "Construction")
+
+# Fit a Fixed Effects Model
+fe_model_construct <- plm(Average_time_to_pay ~ BCI+GDP+inflation_rate+unemployment_rate+interest_rate+total_assets+ROTA+debt_to_equity, 
+                           data = master_data_construct, 
+                           index = c("Company","date"), 
+                           model = "within")
+
+summary(fe_model_construct )
+summary(fe_model_agri)
+
+```
+
+
+
+
+
+```{r}
+master_data_new_1 <- master_data_new %>% distinct(Company, date, .keep_all = TRUE)
+
+payment_times_by_meco_fact <- lm(Average_time_to_pay~BCI+GDP+inflation_rate+unemployment_rate+interest_rate+total_assets+ROTA+debt_to_equity+sector, data=master_data_new_1)
+
+vif(payment_times_by_meco_fact)
+
+summary(payment_times_by_meco_fact)
+
+```
+
+
+
+```{r}
+# Fit a Fixed Effects Model
+fixed_effects_model <- plm(Average_time_to_pay ~ BCI+GDP+inflation_rate+unemployment_rate+interest_rate+total_assets+ROTA+debt_to_equity+sector, 
+                           data = master_data_new_1, 
+                           index = c("Company","date"), 
+                           model = "within")
+
+summary(fixed_effects_model)
+
+# Fit a random effects model
+random_effects_model <- plm(Average_time_to_pay ~ BCI+GDP+inflation_rate+unemployment_rate+interest_rate+total_assets+ROTA+debt_to_equity+sector, 
+                           data = master_data_new_1, 
+                           index = c("Company","date"), 
+                           model = "random")
+
+summary(random_effects_model)
+
+
+```
+
+
