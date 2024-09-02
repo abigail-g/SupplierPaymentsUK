@@ -372,6 +372,8 @@ master_data <- payment_times %>%
   left_join(uk_interest_rate, by=c('date' = 'Date')) %>%
   mutate(date = my(date))
 
+#adding test comment
+
 master_data <- master_data %>%
   left_join(company_data, by=c('Company' = 'company_name', 'date' = 'date')) %>%
   rename('interest_rate' = `interest rate`) %>%
