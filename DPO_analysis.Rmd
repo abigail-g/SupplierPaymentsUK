@@ -16,7 +16,7 @@ library(emmeans)
 
 ```{r}
 
-#UK interest rates 2017 - 2024
+#UK bank rates 2017 - 2024
 uk_bank_rate = read_csv('uk_bank_rate.csv')
 
 #UK company payment time
@@ -43,7 +43,7 @@ company_fdata = read_csv('company_FAME.csv')
 ```
 
 
-#Convert company_fdata table from wide to long
+#Convert company financial data from wide to long
 
 ```{r}
 
@@ -169,6 +169,18 @@ company_fdata <- select(company_fdata, `Company name`, `BvD sector`) %>%
 
 company_fdata <- company_fdata %>% distinct(company_name, .keep_all = TRUE)
 
+# Only keep data of companies having records for all years
+
+companies_with_na <- rbind(company_assets[!complete.cases(company_assets),] %>% select(company_name), 
+                 company_credit_pay[!complete.cases(company_credit_pay),] %>% select(company_name),
+                 company_equity[!complete.cases(company_equity),] %>% select(company_name),
+                 company_liability[!complete.cases(company_liability),] %>% select(company_name),
+                 company_liquidity_ratio[!complete.cases(company_liquidity_ratio),] %>% select(company_name),
+                 company_ROTA[!complete.cases(company_ROTA),] %>% select(company_name),
+                 company_work_cap[!complete.cases(company_work_cap),] %>% select(company_name))
+
+companies_with_na <- companies_with_na %>% distinct(company_name, .keep_all = TRUE)
+
 # Combining all company data and ensure the 'date' column is in Date format (first day of the year) 
 company_data <- company_assets %>% 
   left_join( company_equity, by=c('company_name', 'year')) %>%
@@ -188,14 +200,15 @@ generate_monthly_dates <- function(year_date) {
       by = "month")
 }
 
-# Apply the function to each row and duplicate records
+# Apply the function to each row and duplicate records. Remove companies having na values
 company_data <- company_data %>%
   rowwise() %>%
   mutate(month_sequence = list(generate_monthly_dates(date))) %>%
   unnest(month_sequence) %>%
   mutate(date = format(month_sequence, "%m/%Y")) %>%
   select(-month_sequence) %>% 
-  mutate(date = my(date))
+  mutate(date = my(date)) %>%
+  filter(!company_name %in% companies_with_na$company_name)
 
 
 #Removing temp data frames
@@ -209,16 +222,9 @@ remove(company_work_cap)
 
 ```
 
-#Check for NA values
+#Check for NA values from macro economic data
 
 ```{r}
-# Check the structure of the data
-#str(bank_rate)
-#str(payment_times)
-
-#remove and check for NA values
-payment_times = na.omit(payment_times)
-sum(is.na(payment_times))
 
 uk_bank_rate = na.omit(uk_bank_rate)
 sum(is.na(uk_bank_rate))
@@ -241,7 +247,7 @@ sum(is.na(uk_interest_rate))
 ```
 
 
-#Formatting uk company payment times
+#Formatting all dates
 ```{r}
 # Ensure date columns are in Date format yyyy-mm-dd
 payment_times <- payment_times %>%
@@ -311,7 +317,7 @@ uk_bank_rate <- uk_bank_rate %>%
 ```
 
 
-#Standardizing all data to be monthly
+#Standardizing all dates to be monthly
 
 ```{r}
 # When there is a start and end date
@@ -330,12 +336,20 @@ payment_times <- payment_times %>%
   mutate(date = format(month_sequence, "%m/%Y")) %>%
   select(-month_sequence, -Report_Id, - Start_date, - End_date)
 
+na_rows <- payment_times[!complete.cases(payment_times),] %>% select(Company) %>% distinct(Company, .keep_all = TRUE)
+
+payment_times <- payment_times %>% filter(!Company %in% na_rows$Company)
+
+sum(is.na(payment_times))
+
+payment_times <- payment_times %>% filter(!grepl("2024",date))
+
 
 uk_bank_rate <- uk_bank_rate %>%
   group_by(month_year) %>%
   summarise(bank_rate = mean(bank_rate)) %>%
   rename(date = month_year)
-
+  
 
 # When there is quarterly date
 # Function to convert quarterly dates for the year
@@ -363,6 +377,8 @@ uk_gdp <- uk_gdp %>%
 #creating the master data set 
 
 ```{r}
+remove(master_data)
+
 master_data <- payment_times %>% 
   left_join( uk_bank_rate, by=c('date' = 'date')) %>%
   left_join( uk_BCI, by=c('date' = 'date')) %>%
@@ -370,9 +386,9 @@ master_data <- payment_times %>%
   left_join( uk_inflation, by=c('date' = 'date')) %>%
   left_join( uk_unemp_rate, by=c('date' = 'date')) %>%
   left_join(uk_interest_rate, by=c('date' = 'Date')) %>%
-  mutate(date = my(date))
+  mutate(date = my(date)) %>%
+  filter(!Company %in% companies_with_na$company_name)
 
-#adding test comment
 
 master_data <- master_data %>%
   left_join(company_data, by=c('Company' = 'company_name', 'date' = 'date')) %>%
@@ -380,7 +396,7 @@ master_data <- master_data %>%
   mutate('debt_to_equity' = liabilities/equity) %>%
   select(-liabilities, - equity)
 
-write.csv(master_data, file = "master_data.csv")
+na_rows <- master_data[!complete.cases(master_data),] %>% select(Company) %>% distinct(Company, .keep_all = TRUE)
 
 master_data_na_omit <-na.omit(master_data)
 
@@ -389,6 +405,11 @@ master_data_na_omit$Company <- as.factor(master_data_na_omit$Company)
 str(master_data_na_omit)
 
 master_data_distinct <- master_data_na_omit %>% distinct(Company, date, .keep_all = TRUE)
+write.csv(master_data_distinct, file = "master_data.csv")
+
+n_distinct(master_data_distinct$Company)
+n_distinct(payment_times$Company)
+sum(is.na(payment_times))
 
 ```
 
