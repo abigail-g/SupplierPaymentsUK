@@ -413,6 +413,11 @@ sum(is.na(payment_times))
 
 ```
 
+```{r}
+summary(master_data_distinct)
+```
+
+
 
 # visualise the data on macro-economic factors
 ```{r}
