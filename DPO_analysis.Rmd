@@ -193,6 +193,9 @@ company_data <- company_assets %>%
   mutate(date = ymd(paste0(year, "-01-01"))) %>%
   select(-year) 
 
+company_data <- company_data %>%
+  filter(!company_name %in% companies_with_na$company_name)
+
 # Function to generate monthly dates for a given year
 generate_monthly_dates <- function(year_date) {
   seq(from = year_date, 
@@ -207,9 +210,7 @@ company_data <- company_data %>%
   unnest(month_sequence) %>%
   mutate(date = format(month_sequence, "%m/%Y")) %>%
   select(-month_sequence) %>% 
-  mutate(date = my(date)) %>%
-  filter(!company_name %in% companies_with_na$company_name)
-
+  mutate(date = my(date))
 
 #Removing temp data frames
 remove(company_assets)
@@ -226,22 +227,17 @@ remove(company_work_cap)
 
 ```{r}
 
-uk_bank_rate = na.omit(uk_bank_rate)
 sum(is.na(uk_bank_rate))
 
-uk_gdp = na.omit(uk_gdp)
 sum(is.na(uk_gdp))
 
-uk_unemp_rate = na.omit(uk_unemp_rate)
 sum(is.na(uk_unemp_rate))
 
-uk_inflation = na.omit(uk_inflation)
 sum(is.na(uk_inflation))
 
-uk_BCI = na.omit(uk_BCI)
+uk_BCI <-uk_BCI %>% fill(BCI)
 sum(is.na(uk_BCI))
 
-uk_interest_rate = na.omit((uk_interest_rate))
 sum(is.na(uk_interest_rate))
 
 ```
@@ -336,13 +332,22 @@ payment_times <- payment_times %>%
   mutate(date = format(month_sequence, "%m/%Y")) %>%
   select(-month_sequence, -Report_Id, - Start_date, - End_date)
 
+#there are 10208 distinct companies originally in the dataset
+
+n_distinct(payment_times_1$Company)
+
 na_rows <- payment_times[!complete.cases(payment_times),] %>% select(Company) %>% distinct(Company, .keep_all = TRUE)
 
-payment_times <- payment_times %>% filter(!Company %in% na_rows$Company)
+payment_times_1 <- payment_times %>% filter(!Company %in% na_rows$Company)
+payment_times <- na.omit(payment_times)
 
 sum(is.na(payment_times))
+sum(is.na(payment_times_1))
 
+payment_times_1 <- payment_times_1 %>% filter(!grepl("2024",date))
 payment_times <- payment_times %>% filter(!grepl("2024",date))
+
+# there are now 7979 distinct companies after removing companies with NA values
 
 
 uk_bank_rate <- uk_bank_rate %>%
@@ -374,10 +379,20 @@ uk_gdp <- uk_gdp %>%
 
 ```
 
-#creating the master data set 
+
 
 ```{r}
-remove(master_data)
+
+payment_times %>%
+  ggplot(aes(date, y=Average_time_to_pay)) + geom_point(alpha=0.5) + labs(x="Time / Month", y="time to pay")
+
+
+```
+
+
+#creating the master data set using payment_times
+
+```{r}
 
 master_data <- payment_times %>% 
   left_join( uk_bank_rate, by=c('date' = 'date')) %>%
@@ -386,8 +401,7 @@ master_data <- payment_times %>%
   left_join( uk_inflation, by=c('date' = 'date')) %>%
   left_join( uk_unemp_rate, by=c('date' = 'date')) %>%
   left_join(uk_interest_rate, by=c('date' = 'Date')) %>%
-  mutate(date = my(date)) %>%
-  filter(!Company %in% companies_with_na$company_name)
+  mutate(date = my(date))
 
 
 master_data <- master_data %>%
@@ -396,7 +410,9 @@ master_data <- master_data %>%
   mutate('debt_to_equity' = liabilities/equity) %>%
   select(-liabilities, - equity)
 
-na_rows <- master_data[!complete.cases(master_data),] %>% select(Company) %>% distinct(Company, .keep_all = TRUE)
+#na_rows <- master_data[!complete.cases(master_data),] %>% select(Company) %>% distinct(Company, .keep_all = TRUE)
+
+sum(is.na(master_data))
 
 master_data_na_omit <-na.omit(master_data)
 
@@ -413,8 +429,58 @@ sum(is.na(payment_times))
 
 ```
 
+#creating the master data set using payment_times_1
+
 ```{r}
-summary(master_data_distinct)
+
+master_data_1 <- payment_times_1 %>% 
+  left_join( uk_bank_rate, by=c('date' = 'date')) %>%
+  left_join( uk_BCI, by=c('date' = 'date')) %>%
+  left_join( uk_gdp, by=c('date' = 'date')) %>%
+  left_join( uk_inflation, by=c('date' = 'date')) %>%
+  left_join( uk_unemp_rate, by=c('date' = 'date')) %>%
+  left_join(uk_interest_rate, by=c('date' = 'Date')) %>%
+  mutate(date = my(date)) %>%
+  filter(!Company %in% companies_with_na$company_name)
+
+
+master_data_1 <- master_data_1 %>%
+  left_join(company_data, by=c('Company' = 'company_name', 'date' = 'date')) %>%
+  rename('interest_rate' = `interest rate`) %>%
+  mutate('debt_to_equity' = liabilities/equity) %>%
+  select(-liabilities, - equity)
+
+na_rows <- master_data_1[!complete.cases(master_data_1),] %>% select(Company) %>% distinct(Company, .keep_all = TRUE)
+
+sum(is.na(master_data_1))
+
+#master_data_na_omit_1 <-na.omit(master_data_1)
+
+master_data_na_omit_1 <- master_data_1 %>% filter(!Company %in% na_rows$Company)
+
+master_data_na_omit_1$sector <- as.factor(master_data_na_omit_1$sector)
+master_data_na_omit_1$Company <- as.factor(master_data_na_omit_1$Company)
+str(master_data_na_omit_1)
+
+master_data_distinct_1 <- master_data_na_omit_1 %>% distinct(Company, date, .keep_all = TRUE)
+write.csv(master_data_distinct_1, file = "master_data_1.csv")
+
+n_distinct(master_data_distinct_1$Company) #1332
+n_distinct(payment_times_1$Company) #7860
+
+```
+
+# Exploratory Analysis
+
+
+```{r}
+library(vtable)
+st(master_data_distinct_1, vars= c("Average_time_to_pay", "bank_rate", "BCI", "GDP", "inflation_rate", "unemployment_rate", "interest_rate", "total_assets", "ROTA", "working_capital", "creditors_payment", "liquidity_ratio", "debt_to_equity"))
+
+summary(master_data_distinct_1)
+
+master_data_distinct <- master_data_distinct_1
+
 ```
 
 
@@ -423,6 +489,9 @@ summary(master_data_distinct)
 ```{r}
 master_data_distinct %>%
   ggplot(aes(date, y=interest_rate)) + geom_line(alpha=0.5) + labs(x="Time / Month", y="Interest rate")
+
+master_data_distinct %>%
+  ggplot(aes(date, y=bank_rate)) + geom_line(alpha=0.5) + labs(x="Time / Month", y="Bank rate")
 
 master_data_distinct %>%
   ggplot(aes(date, y=BCI)) + geom_line(alpha=0.5) + labs(x="Time / Month", y="Business Confidence Index")
@@ -444,10 +513,10 @@ master_data_distinct %>%
 # visualise company data
 
 ```{r}
-master_data_distinct %>%
-  group_by(sector, date) %>%
-  summarise(avg_time_to_pay = mean(Average_time_to_pay)) %>%
-  ggplot(aes(x=date, y=avg_time_to_pay, col=sector)) + geom_line(alpha=0.5) + scale_y_continuous(breaks=1:10) + labs(x="Time / Month", y="avg time to pay", col="sector") + geom_vline(xintercept=2.5, lty=3)
+# master_data_distinct %>%
+#   group_by(sector, date) %>%
+#   summarise(avg_time_to_pay = mean(Average_time_to_pay)) %>%
+#   ggplot(aes(x=date, y=avg_time_to_pay, col=sector)) + geom_line(alpha=0.5) + scale_y_continuous(breaks=1:10) + labs(x="Time / Month", y="avg time to pay", col="sector") + geom_vline(xintercept=2.5, lty=3)
 
 master_data_distinct %>%
   group_by(sector, date) %>%
@@ -458,28 +527,40 @@ master_data_distinct %>%
 
 # comparing sectors
 ```{r}
-master_data_distinct %>% 
-  filter(sector == "Agriculture, Horticulture & Livestock" | sector == "Wood, Furniture & Paper Manufacturing") %>%
-  group_by(sector,date) %>%
-  summarise(avg_working_capital = mean(working_capital)) %>%
-  ggplot(aes(x=date, y=avg_working_capital, col=sector)) + geom_line()
-
-
-master_data_distinct %>% 
-  filter(sector == "Agriculture, Horticulture & Livestock" | sector == "Wood, Furniture & Paper Manufacturing") %>%
-  group_by(sector,date) %>%
-  summarise(avg_total_assets = mean(total_assets)) %>%
-  ggplot(aes(x=date, y=avg_total_assets, col=sector)) + geom_line()
+# master_data_distinct %>% 
+#   filter(sector == "Agriculture, Horticulture & Livestock" | sector == "Wood, Furniture & Paper Manufacturing") %>%
+#   group_by(sector,date) %>%
+#   summarise(avg_working_capital = mean(working_capital)) %>%
+#   ggplot(aes(x=date, y=avg_working_capital, col=sector)) + geom_line()
+# 
+# 
+# master_data_distinct %>% 
+#   filter(sector == "Agriculture, Horticulture & Livestock" | sector == "Wood, Furniture & Paper Manufacturing") %>%
+#   group_by(sector,date) %>%
+#   summarise(avg_total_assets = mean(total_assets)) %>%
+#   ggplot(aes(x=date, y=avg_total_assets, col=sector)) + geom_line()
 
 ```
+
+
+```{r}
+
+
+
+master_data %>% group_by(Average_time_to_pay) %>% summarise(COUNT = n())
+master_data_1 %>% group_by(Average_time_to_pay) %>% summarise(COUNT = n())
+
+```
+
 
 
 # identifying multicolinearity
 
 ```{r}
 master_data_distinct <- filter(master_data_distinct, master_data_distinct$Average_time_to_pay<2000)
+master_data_distinct_1 <- filter(master_data_distinct_1, master_data_distinct_1$Average_time_to_pay<2000)
 
-ggplot(master_data_distinct, aes(x=interest_rate, y=bank_rate)) + geom_point() + labs(x="Credit Spread", y="Bank rate") + geom_vline(xintercept=2.5, lty=3)
+ggplot(master_data_distinct, aes(x=interest_rate, y=bank_rate)) + geom_point() + labs(x="Interest rate", y="Bank rate") + geom_vline(xintercept=2.5, lty=3)
 
 ```
 
@@ -488,53 +569,61 @@ ggplot(master_data_distinct, aes(x=interest_rate, y=bank_rate)) + geom_point() +
 #checking for multicolinearity
 
 ```{r}
-cor_matrix <- cor(master_data_distinct[, c("bank_rate", "BCI", "GDP", "inflation_rate", 
+library(psych)
+# cor_matrix <- cor(master_data_distinct[, c("bank_rate", "BCI", "GDP", "inflation_rate", 
+#                                       "unemployment_rate", "interest_rate", 
+#                                       "total_assets", "ROTA", "debt_to_equity")])
+
+lowerCor(master_data_distinct[, c("bank_rate", "BCI", "GDP", "inflation_rate", 
                                       "unemployment_rate", "interest_rate", 
                                       "total_assets", "ROTA", "debt_to_equity")])
 
-cor_matrix[upper.tri(cor_matrix)] <- NA
-cor_matrix[cor_matrix <= 0.5] <- NA
+lowerCor(master_data_distinct[, c("BCI", "GDP","inflation_rate",
+                                      "unemployment_rate", "interest_rate", 
+                                      "total_assets", "ROTA", "debt_to_equity")])
 
-print(round(cor_matrix, 2))
+# cor_matrix[upper.tri(cor_matrix)] <- NA
+# cor_matrix[cor_matrix <= 0.5] <- NA
+# 
+# print(round(cor_matrix, 2))
 
 ```
 
 #grouping data by sector
 ```{r}
-compcount_by_sector <- master_data_distinct %>%
-  group_by(sector) %>%
-  summarise(no_of_comp = n_distinct(Company) )
-
-print(compcount_by_sector)
-
-
-#filter companies from agriculture sector
-master_data_agri <- master_data_distinct %>%
-  filter(sector == "Agriculture, Horticulture & Livestock")
-
-# Fit a Fixed Effects Model
-fe_model_agri <- plm(Average_time_to_pay ~ BCI+GDP+inflation_rate+unemployment_rate+interest_rate+total_assets+ROTA+debt_to_equity, 
-                           data = master_data_agri, 
-                           index = c("Company","date"), 
-                           model = "within")
-
-
-
-#filter companies from construction sector
-master_data_construct <- master_data_distinct %>%
-  filter(sector == "Construction")
-
-# Fit a Fixed Effects Model
-fe_model_construct <- plm(Average_time_to_pay ~ BCI+GDP+inflation_rate+unemployment_rate+interest_rate+total_assets+ROTA+debt_to_equity, 
-                           data = master_data_construct, 
-                           index = c("Company","date"), 
-                           model = "within")
-
-summary(fe_model_construct )
-summary(fe_model_agri)
+# compcount_by_sector <- master_data_distinct %>%
+#   group_by(sector) %>%
+#   summarise(no_of_comp = n_distinct(Company) )
+# 
+# print(compcount_by_sector)
+# 
+# 
+# #filter companies from agriculture sector
+# master_data_agri <- master_data_distinct %>%
+#   filter(sector == "Agriculture, Horticulture & Livestock")
+# 
+# # Fit a Fixed Effects Model
+# fe_model_agri <- plm(Average_time_to_pay ~ BCI+GDP+inflation_rate+unemployment_rate+interest_rate+total_assets+ROTA+debt_to_equity, 
+#                            data = master_data_agri, 
+#                            index = c("Company","date"), 
+#                            model = "within")
+# 
+# 
+# 
+# #filter companies from construction sector
+# master_data_construct <- master_data_distinct %>%
+#   filter(sector == "Construction")
+# 
+# # Fit a Fixed Effects Model
+# fe_model_construct <- plm(Average_time_to_pay ~ BCI+GDP+inflation_rate+unemployment_rate+interest_rate+total_assets+ROTA+debt_to_equity, 
+#                            data = master_data_construct, 
+#                            index = c("Company","date"), 
+#                            model = "within")
+# 
+# summary(fe_model_construct )
+# summary(fe_model_agri)
 
 ```
-
 
 
 
@@ -552,21 +641,38 @@ summary(payment_times_by_meco_fact)
 
 ```{r}
 # Fit a Fixed Effects Model
-fixed_effects_model <- plm(Average_time_to_pay ~ BCI+GDP+inflation_rate+unemployment_rate+interest_rate+total_assets+ROTA+debt_to_equity+sector, 
-                           data = master_data_distinct, 
+remove(fixed_effects_model)
+
+fixed_effects_model <- plm(Average_time_to_pay ~ BCI+GDP+unemployment_rate+inflation_rate+interest_rate+total_assets+ROTA+debt_to_equity+sector, 
+                           data = master_data_distinct_1, 
                            index = c("Company","date"), 
                            model = "within")
 
-summary(fixed_effects_model)
+#+inflation_rate
 
-# Fit a random effects model
-random_effects_model <- plm(Average_time_to_pay ~ BCI+GDP+inflation_rate+unemployment_rate+interest_rate+total_assets+ROTA+debt_to_equity+sector, 
-                           data = master_data_distinct, 
-                           index = c("Company","date"), 
-                           model = "random")
+res <- summary(fixed_effects_model)
+print(res$coefficients)
 
-summary(random_effects_model)
+library(lmtest)
 
+#testing for autocorelation
+bg_test <- bgtest(fixed_effects_model, order = 1)
+print(bg_test)
+
+#testing for heteroskedasticity
+bp_test <- bptest(fixed_effects_model)
+print(bp_test)
+
+coeftest(fixed_effects_model, vcovHC(fixed_effects_model, type = "HC1"))
+
+
+# # Fit a random effects model
+# random_effects_model <- plm(Average_time_to_pay ~ BCI+GDP+inflation_rate+unemployment_rate+interest_rate+total_assets+ROTA+debt_to_equity+sector, 
+#                            data = master_data_distinct, 
+#                            index = c("sector","date"), 
+#                            model = "random")
+# 
+# summary(random_effects_model)
 
 ```
 
